@@ -4,6 +4,7 @@ from math import exp
 import cv2.cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy import ndimage
 
 
 def imReadAndConvert(filename: str, representation: int) -> np.ndarray:
@@ -75,7 +76,7 @@ def convDerivative(inImage: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray, 
     Iy = conv2D(inImage, k)
     mag = np.sqrt(np.power(Ix, 2) + np.power(Iy, 2))
     div = np.arctan2(Iy, Ix)
-    return mag, div, Ix, Iy
+    return div, mag, Ix, Iy
 
 
 def blurImage1(in_image: np.ndarray, kernel_size: np.ndarray) -> np.ndarray:
@@ -120,7 +121,6 @@ def edgeDetectionSobel(img: np.ndarray, thresh: float = 0.2) -> (np.ndarray, np.
                   [1, 0, -1]])
 
     thresh *= 255
-
     my_res = np.sqrt((conv2D(img, s) ** 2 + conv2D(img, s.transpose()) ** 2))
     my = np.ndarray(my_res.shape)
     my[my_res > thresh] = 1
@@ -144,13 +144,10 @@ def edgeDetectionZeroCrossingSimple(img: np.ndarray) -> (np.ndarray):
     :param I: Input image
     :return: Edge matrix
     """
-    img
     k = np.array([[0, 1, 0],
                   [1, -4, 1],
                   [0, 1, 0]])
-
     d = conv2D(img, k)
-    # print(d[0:5, 0:5])
     res = np.zeros(d.shape)
 
     for i in range(0, d.shape[0]):
@@ -169,8 +166,6 @@ def edgeDetectionZeroCrossingSimple(img: np.ndarray) -> (np.ndarray):
 
             except IndexError as e:
                 pass
-    print("**********************")
-    print(res[0:5, 0:5])
     return res
 
 
@@ -184,16 +179,10 @@ def edgeDetectionZeroCrossingLOG(img: np.ndarray) -> np.ndarray:
     return edgeDetectionZeroCrossingSimple(blur)
 
 
-def sobleForCanny(img: np.ndarray, ):
-
-    k = np.array([[1, 0, -1],
-                  [2, 0, -2],
-                  [1, 0, -1]], dtype=np.float32)
-    Ix = cv.filter2D(img, -1, k, borderType=cv.BORDER_REPLICATE)
-    Iy = cv.filter2D(img, -1, k.transpose(), borderType=cv.BORDER_REPLICATE)
-    mag = np.sqrt(np.power(Ix, 2) + np.power(Iy, 2))
-    div = np.arctan2(Iy, Ix)
-    return mag, div
+def sobleForCanny(img: np.ndarray):
+    G = np.sqrt(np.power(cv.Sobel(img, -1, 0, 1), 2) + np.power(cv.Sobel(img, -1, 1, 0), 2))
+    theta = np.arctan2(cv.Sobel(img, -1, 0, 1), cv.Sobel(img, -1, 1, 0))
+    return G, theta
 
 
 def edgeDetectionCanny(img: np.ndarray, thrs_1: float, thrs_2: float) -> (np.ndarray, np.ndarray):
@@ -206,12 +195,7 @@ def edgeDetectionCanny(img: np.ndarray, thrs_1: float, thrs_2: float) -> (np.nda
     """
 
     mag, div = sobleForCanny(img)
-    plt.imshow(mag,cmap='gray')
-    plt.show()
-    print(np.max(div%180))
     nms = non_max_suppression(mag, div)
-    plt.imshow(nms, cmap='gray')
-    plt.show()
 
     for i in range(0, nms.shape[0]):
         for j in range(0, nms.shape[1]):
@@ -219,7 +203,7 @@ def edgeDetectionCanny(img: np.ndarray, thrs_1: float, thrs_2: float) -> (np.nda
                 if nms[i][j] <= thrs_2:
                     nms[i][j] = 0
                 elif thrs_2 < nms[i][j] < thrs_1:
-                    neighbor = nms[i - 1:i + 2, j - 1, j + 2]
+                    neighbor = nms[i - 1:i + 2, j - 1: j + 2]
                     if neighbor.max() < thrs_1:
                         nms[i][j] = 0
                     else:
@@ -234,10 +218,10 @@ def edgeDetectionCanny(img: np.ndarray, thrs_1: float, thrs_2: float) -> (np.nda
 
 
 def non_max_suppression(img: np.ndarray, D: np.ndarray) -> np.ndarray:
-
     M, N = img.shape
     Z = np.zeros((M, N), dtype=np.float32)
-    angle = D % 180
+    angle = D * 180. / np.pi
+    angle[angle < 0] += 180
 
     for i in range(1, M - 1):
         for j in range(1, N - 1):
@@ -272,6 +256,106 @@ def non_max_suppression(img: np.ndarray, D: np.ndarray) -> np.ndarray:
     return Z
 
 
+def houghCircle(img: np.ndarray, min_radius: float, max_radius: float) -> list:
+    """
+    Find Circles in an image using a Hough Transform algorithm extension
+    :param I: Input image
+    :param minRadius: Minimum circle radius
+    :param maxRadius: Maximum circle radius
+    :return: A list containing the detected circles,
+    [(x,y,radius),(x,y,radius),...]
+    """
+
+    # div = div * 180. / np.pi
+    # div[div < 0] += 180
+    imgc, _ = edgeDetectionCanny(img, 100, 50)
+    _, div = sobleForCanny(img)
+    #div = np.arctan2(cv.Sobel(img, -1, 0, 1), cv.Sobel(img, -1, 1, 0))
+    plt.imshow(imgc, cmap='gray')
+    plt.show()
+    # plt.imshow(cvc, cmap='gray')
+    # plt.show()
+    tresh = 20
+    hough = np.zeros((imgc.shape[0], imgc.shape[1], max_radius - min_radius))
+    list = []
+    print(imgc.shape[0])
+    print(imgc.shape[1])
+    for r in range(hough.shape[2]):
+        for x in range(0, imgc.shape[1]):
+            for y in range(0, imgc.shape[0]):
+                if imgc[y, x] != 0:
+                    try:
+                        # t1 = div[y, x]
+                        # t2 = div[y, x] - math.pi
+                        a1 = x + (r + min_radius) * np.cos(div[y, x])
+                        b1 = y + (r + min_radius) * np.sin(div[y, x])
+                        a2 = x - (r + min_radius) * np.cos(div[y, x])
+                        b2 = y - (r + min_radius) * np.sin(div[y, x])
+                        hough[int(a1), int(b1), r] += 1
+                        hough[int(a2), int(b2), r] += 1
+                        # if hough[int(a1), int(b1), r] > tresh:
+                        #     list.append((int(a1), int(b1), min_radius + r))
+                        # if hough[int(a2), int(b2), r] > tresh:
+                        #     list.append((int(a2), int(b2), min_radius + r))
+                    except IndexError as e:
+                        pass
+
+
+
+    for r in range(hough.shape[2]):
+        for x in range(0, img.shape[0]):
+            for y in range(0, img.shape[1]):
+                if hough[x, y, r] > tresh:
+                    list.append((x, y, min_radius+r))
+
+    return list
+
+
+# line = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ])
+# plt.imshow(line)
+# plt.show()
+# div, _, _, _ = convDerivative(line)
+# div = div * 180. / np.pi
+#
+# print(div.astype(int))
+
+
+image = imReadAndConvert("coincut.png", 1)
+center_coordinates = (300, 50)
+
+# Radius of circle
+# radius = 20
+# # Blue color in BGR
+# color = (0, 0, 255)
+# # Line thickness of 2 px
+# thickness = 2
+# image = cv.circle(image, center_coordinates, radius, color, thickness)
+# plt.imshow(image, cmap='gray')
+# plt.show()
+
+list = houghCircle(image, 40, 100)
+
+print(list)
+fig, ax = plt.subplots()
+ax.imshow(image, cmap='gray')
+for c in list:
+    if c[1] > 600 or c[2] > 600:
+        print(c)
+    circle1 = plt.Circle((c[0], c[1]), c[2], color='r', fill=False)
+    ax.add_artist(circle1)
+plt.show()
+
+# image = cv.imread("coins.jpg", 0)
+# data = np.asarray(image, dtype=np.float32)
+# list = houghCircle(imReadAndConvert(data, 1), 30, 70)
+# print(list)
 # print(np.convolve([1, 2, 3], [0, 1, 0.5]))
 # a = np.array([1,2,3])
 # b = np.array([0,1,0.5])
@@ -322,13 +406,13 @@ def non_max_suppression(img: np.ndarray, D: np.ndarray) -> np.ndarray:
 # ax[1].imshow(edgeX, cmap="gray")
 # plt.show()
 
-image = cv.imread("boxman.jpg", 0)
-data = np.asarray(image, dtype=np.float32)
-cvc, myc = edgeDetectionCanny(data, 60, 20)
-f, ax = plt.subplots(1, 2)
-ax[0].imshow(cvc, cmap="gray")
-ax[1].imshow(myc, cmap="gray")
-plt.show()
+# image = cv.imread("boxman.jpg", 0)
+# data = np.asarray(image, dtype=np.float32)
+# cvc, myc = edgeDetectionCanny(data, 100, 50)
+# f, ax = plt.subplots(1, 2)
+# ax[0].imshow(cvc, cmap="gray")
+# ax[1].imshow(myc, cmap="gray")
+# plt.show()
 
 # mag, div, Ix, Iy = convDerivative(imReadAndConvert("frog.png", 1))
 # plt.imshow(Ix, cmap='gray')
