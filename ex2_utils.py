@@ -14,7 +14,6 @@ def imReadAndConvert(filename: str, representation: int) -> np.ndarray:
     :param representation: GRAY_SCALE or RGB
     :return: The image object
     """
-    # Open the img file
 
     if representation == 2:
         image = cv.imread(filename, 1)
@@ -87,11 +86,18 @@ def blurImage1(in_image: np.ndarray, kernel_size: np.ndarray) -> np.ndarray:
     :return: The Blurred image
     """
 
+    # Creates an array at a given size
     gaussian = np.ndarray(kernel_size)
+
+    # Optimal sigma
     sigma = 0.3 * ((kernel_size[0] - 1) * 0.5 - 1) + 0.8
+
+    # Creates the karnel accurding to gausian furmula
     for x in range(0, kernel_size[0]):
         for y in range(0, kernel_size[1]):
             gaussian[x, y] = math.exp(-((x ** 2 + y ** 2) / (2.0 * sigma ** 2))) / (math.pi * (sigma ** 2) * 2)
+
+    # Resturns the blurred img
     return conv2D(in_image, gaussian)
 
 
@@ -125,16 +131,12 @@ def edgeDetectionSobel(img: np.ndarray, thresh: float = 0.2) -> (np.ndarray, np.
     my = np.ndarray(my_res.shape)
     my[my_res > thresh] = 1
     my[my_res < thresh] = 0
-    plt.imshow(my, cmap='gray')
-    plt.show()
 
     cv_res = cv.magnitude(cv.Sobel(img, -1, 1, 0), cv.Sobel(img, -1, 0, 1))
     v = np.ndarray(cv_res.shape)
     v[cv_res > thresh] = 1
     v[cv_res < thresh] = 0
 
-    plt.imshow(v, cmap='gray')
-    plt.show()
     return cv_res, my_res
 
 
@@ -194,22 +196,41 @@ def edgeDetectionCanny(img: np.ndarray, thrs_1: float, thrs_2: float) -> (np.nda
     :return: opencv solution, my implementation
     """
 
+    # Sobel edge detection
     mag, div = sobleForCanny(img)
+    # NMS on the results from sobel
     nms = non_max_suppression(mag, div)
 
+    # Check all the nms points and mark the ones that are for sure an edge
+    # and mark with 150 all the edges that have potential to be an edge.
     for i in range(0, nms.shape[0]):
         for j in range(0, nms.shape[1]):
             try:
                 if nms[i][j] <= thrs_2:
                     nms[i][j] = 0
                 elif thrs_2 < nms[i][j] < thrs_1:
+                    # Check is one of the neighbors is marked as edge
+                    neighbor = nms[i - 1:i + 2, j - 1: j + 2]
+                    if neighbor.max() < thrs_1:
+                        nms[i][j] = 150
+                    else:
+                        nms[i][j] = 255
+                else:
+                    nms[i][j] = 255
+            except IndexError as e:
+                pass
+
+    # Check all the potential points is they are a part of any edge
+    for i in range(0, nms.shape[0]):
+        for j in range(0, nms.shape[1]):
+            try:
+                if nms[i][j] == 150:
+                    # Check is one of the neighbors is marked as edge
                     neighbor = nms[i - 1:i + 2, j - 1: j + 2]
                     if neighbor.max() < thrs_1:
                         nms[i][j] = 0
                     else:
                         nms[i][j] = 255
-                else:
-                    nms[i][j] = 255
             except IndexError as e:
                 pass
 
@@ -218,9 +239,17 @@ def edgeDetectionCanny(img: np.ndarray, thrs_1: float, thrs_2: float) -> (np.nda
 
 
 def non_max_suppression(img: np.ndarray, D: np.ndarray) -> np.ndarray:
+    """
+    Preforming a non maximum suppuration to a given img using it's direction matrix
+    Will first change the radians to degrees and make all between 0-180
+    "Quantisize" the image to 4 groups and will check the neighbors according
+    The is to make sure we will get the edges with less noise around them
+    """
     M, N = img.shape
     Z = np.zeros((M, N), dtype=np.float32)
-    angle = D * 180. / np.pi
+    # Change to degrees
+    angle = np.rad2deg(D)
+    # Make all 0-180
     angle[angle < 0] += 180
 
     for i in range(1, M - 1):
@@ -245,6 +274,7 @@ def non_max_suppression(img: np.ndarray, D: np.ndarray) -> np.ndarray:
                     q = img[i - 1, j - 1]
                     r = img[i + 1, j + 1]
 
+                # Check who is greater amount my neighbors
                 if (img[i, j] >= q) and (img[i, j] >= r):
                     Z[i, j] = img[i, j]
                 else:
@@ -266,20 +296,24 @@ def houghCircle(img: np.ndarray, min_radius: float, max_radius: float) -> list:
     [(x,y,radius),(x,y,radius),...]
     """
 
+    # Do a canny edge detection
     imgc, _ = edgeDetectionCanny(img, 100, 50)
+
+    # Get the deration matrix after sobel
     _, div = sobleForCanny(img)
-    plt.imshow(imgc, cmap='gray')
-    plt.show()
+
     tresh = 20
+    # 3D array of all to check all the radius from min to max
     hough = np.zeros((imgc.shape[0], imgc.shape[1], max_radius - min_radius))
     list = []
-    print(imgc.shape[0])
-    print(imgc.shape[1])
+
+    # for every R is there is a circle in the image
     for r in range(hough.shape[2]):
         for x in range(0, imgc.shape[1]):
             for y in range(0, imgc.shape[0]):
                 if imgc[y, x] != 0:
                     try:
+                        # Will mark according to the gradient direction the front and rear points as centers of circles
                         a1 = x + (r + min_radius) * np.cos(div[y, x])
                         b1 = y + (r + min_radius) * np.sin(div[y, x])
                         a2 = x - (r + min_radius) * np.cos(div[y, x])
@@ -290,13 +324,12 @@ def houghCircle(img: np.ndarray, min_radius: float, max_radius: float) -> list:
                     except IndexError as e:
                         pass
 
-
-
+    # Check if the point is over the threshold and should mark as a center of ac circle
     for r in range(hough.shape[2]):
         for x in range(0, img.shape[0]):
             for y in range(0, img.shape[1]):
                 if hough[x, y, r] > tresh:
-                    list.append((x, y, min_radius+r))
+                    list.append((x, y, min_radius + r))
 
     return list
 
@@ -317,9 +350,8 @@ def houghCircle(img: np.ndarray, min_radius: float, max_radius: float) -> list:
 # print(div.astype(int))
 
 
-image = imReadAndConvert("coincut.png", 1)
-center_coordinates = (300, 50)
-
+# image = imReadAndConvert("coincut.png", 1)
+# center_coordinates = (300, 50)
 # Radius of circle
 # radius = 20
 # # Blue color in BGR
@@ -330,17 +362,17 @@ center_coordinates = (300, 50)
 # plt.imshow(image, cmap='gray')
 # plt.show()
 
-list = houghCircle(image, 40, 100)
-
-print(list)
-fig, ax = plt.subplots()
-ax.imshow(image, cmap='gray')
-for c in list:
-    if c[1] > 600 or c[2] > 600:
-        print(c)
-    circle1 = plt.Circle((c[0], c[1]), c[2], color='r', fill=False)
-    ax.add_artist(circle1)
-plt.show()
+# list = houghCircle(image, 40, 100)
+#
+# print(list)
+# fig, ax = plt.subplots()
+# ax.imshow(image, cmap='gray')
+# for c in list:
+#     if c[1] > 600 or c[2] > 600:
+#         print(c)
+#     circle1 = plt.Circle((c[0], c[1]), c[2], color='r', fill=False)
+#     ax.add_artist(circle1)
+# plt.show()
 
 # image = cv.imread("coins.jpg", 0)
 # data = np.asarray(image, dtype=np.float32)
@@ -396,13 +428,13 @@ plt.show()
 # ax[1].imshow(edgeX, cmap="gray")
 # plt.show()
 
-# image = cv.imread("boxman.jpg", 0)
-# data = np.asarray(image, dtype=np.float32)
-# cvc, myc = edgeDetectionCanny(data, 100, 50)
-# f, ax = plt.subplots(1, 2)
-# ax[0].imshow(cvc, cmap="gray")
-# ax[1].imshow(myc, cmap="gray")
-# plt.show()
+image = cv.imread("boxman.jpg", 0)
+data = np.asarray(image, dtype=np.float32)
+cvc, myc = edgeDetectionCanny(data, 100, 50)
+f, ax = plt.subplots(1, 2)
+ax[0].imshow(cvc, cmap="gray")
+ax[1].imshow(myc, cmap="gray")
+plt.show()
 
 # mag, div, Ix, Iy = convDerivative(imReadAndConvert("frog.png", 1))
 # plt.imshow(Ix, cmap='gray')
