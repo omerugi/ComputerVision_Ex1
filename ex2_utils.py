@@ -7,26 +7,6 @@ import matplotlib.pyplot as plt
 from scipy import ndimage
 
 
-def imReadAndConvert(filename: str, representation: int) -> np.ndarray:
-    """
-    Reads an image, and returns the image converted as requested
-    :param filename: The path to the image
-    :param representation: GRAY_SCALE or RGB
-    :return: The image object
-    """
-
-    if representation == 2:
-        image = cv.imread(filename, 1)
-        data = np.asarray(image, dtype=np.float32)
-        data = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-
-    else:
-        image = cv.imread(filename, 0)
-        data = np.asarray(image, dtype=np.float32)
-
-    return data
-
-
 def conv1D(inSignal: np.ndarray, kernel1: np.ndarray) -> np.ndarray:
     """
     Convolve a 1-D array with a given kernel
@@ -50,13 +30,30 @@ def conv2D(inImage: np.ndarray, kernel2: np.ndarray) -> np.ndarray:
     :param kernel2: A kernel
     :return: The convolved image
     """
-    k = np.flip(kernel2)
-    print(inImage.shape)
-    a = np.pad(inImage, (k.shape[0] // 2, k.shape[1] // 2), 'edge')
-    res = np.ndarray(inImage.shape)
+
+
+    k = kernel2
+
+    # if the kernel is a vector with shape like ([1,1,1]) pad it with 0's to be a square
+    if(len(k.shape)==1):
+        k=np.pad(k.reshape(1, len(k)).transpose(), (len(k) // 2, len(k) // 2), 'constant')
+        k=k[1:k.shape[0]-1,:]
+
+    #if the kernel is a vector wuth shape like ([[1],[1],[1]) pad it with 0's to be a square
+    if(k.shape[1]==1):
+        k = np.pad(k.reshape(1, len(k)).transpose(), (len(k) // 2, len(k) // 2), 'constant')
+        k = k[1:k.shape[0] - 1, :]
+
+    #pad the image
+    a = np.pad(inImage, (k.shape[0] // 2, k.shape[1] // 2), 'edge').astype('float32')
+
+    #the result
+    res = np.ndarray(inImage.shape).astype('float32')
+
+    #the convolution
     for i in range(res.shape[0]):
         for j in range(res.shape[1]):
-            res[i, j] = np.multiply(a[i:i + k.shape[0], j:j + k.shape[1]], k).sum()
+            res[i, j] = (a[i:i + k.shape[0], j:j + k.shape[1]] * k).sum()
 
     return res
 
@@ -67,10 +64,11 @@ def convDerivative(inImage: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray, 
     :param inImage: Grayscale iamge
     :return: (directions, magnitude,x_der,y_der)
     """
-
+    #the kernel for the derivative
     k = np.array([[0, 1, 0],
                   [0, 0, 0],
                   [0, -1, 0]])
+
     Ix = conv2D(inImage, k.transpose())
     Iy = conv2D(inImage, k)
     mag = np.sqrt(np.power(Ix, 2) + np.power(Iy, 2))
@@ -78,7 +76,7 @@ def convDerivative(inImage: np.ndarray) -> (np.ndarray, np.ndarray, np.ndarray, 
     return div, mag, Ix, Iy
 
 
-def blurImage1(in_image: np.ndarray, kernel_size: np.ndarray) -> np.ndarray:
+def blurImage1(in_image: np.ndarray, kernel_size: int) -> np.ndarray:
     """
     Blur an image using a Gaussian kernel
     :param inImage: Input image
@@ -86,22 +84,23 @@ def blurImage1(in_image: np.ndarray, kernel_size: np.ndarray) -> np.ndarray:
     :return: The Blurred image
     """
 
-    # Creates an array at a given size
-    gaussian = np.ndarray(kernel_size)
-
     # Optimal sigma
-    sigma = 0.3 * ((kernel_size[0] - 1) * 0.5 - 1) + 0.8
+    sigma = 0.3 * ((kernel_size - 1) * 0.5 - 1) + 0.8
 
     # Creates the karnel accurding to gausian furmula
-    for x in range(0, kernel_size[0]):
-        for y in range(0, kernel_size[1]):
-            gaussian[x, y] = math.exp(-((x ** 2 + y ** 2) / (2.0 * sigma ** 2))) / (math.pi * (sigma ** 2) * 2)
+    gaussian1 = np.array([1, 1])
+    gaussian1D = np.array([1, 1])
+    for i in range(0, kernel_size -2):
+        gaussian1D = conv1D(gaussian1D, gaussian1)
+    gaussian1D = gaussian1D.reshape(kernel_size, 1)
+    gaussian = gaussian1D * gaussian1D.transpose()
+    gaussian = gaussian / gaussian.sum()
 
     # Resturns the blurred img
     return conv2D(in_image, gaussian)
 
 
-def blurImage2(in_image: np.ndarray, kernel_size: np.ndarray) -> np.ndarray:
+def blurImage2(in_image: np.ndarray, kernel_size: int) -> np.ndarray:
     """
     Blur an image using a Gaussian kernel using OpenCV built-in functions
     :param inImage: Input image
@@ -109,10 +108,10 @@ def blurImage2(in_image: np.ndarray, kernel_size: np.ndarray) -> np.ndarray:
     :return: The Blurred image
     """
 
-    sigma = 0.3 * ((kernel_size[0] - 1) * 0.5 - 1) + 0.8
-    shape = (kernel_size[0], kernel_size[1])
-    res = cv.GaussianBlur(in_image, shape, sigma)
-    return res
+    sigma = 0.3 * ((kernel_size - 1) * 0.5 - 1) + 0.8
+    guassian = cv.getGaussianKernel(kernel_size, sigma)
+    guassian = guassian * guassian.transpose()
+    return cv.filter2D(in_image, -1, guassian, borderType=cv.BORDER_REPLICATE)
 
 
 def edgeDetectionSobel(img: np.ndarray, thresh: float = 0.2) -> (np.ndarray, np.ndarray):
@@ -127,7 +126,9 @@ def edgeDetectionSobel(img: np.ndarray, thresh: float = 0.2) -> (np.ndarray, np.
                   [1, 0, -1]])
 
     thresh *= 255
-    my_res = np.sqrt((conv2D(img, s) ** 2 + conv2D(img, s.transpose()) ** 2))
+    # my_res = np.sqrt((conv2D(img, s) ** 2 + conv2D(img, s.transpose()) ** 2))
+    my_res = np.sqrt((cv.filter2D(img, -1, s, borderType=cv.BORDER_REPLICATE) ** 2 + cv.filter2D(img, -1, s.transpose(),
+                                                                                                 borderType=cv.BORDER_REPLICATE) ** 2))
     my = np.ndarray(my_res.shape)
     my[my_res > thresh] = 1
     my[my_res < thresh] = 0
@@ -149,9 +150,10 @@ def edgeDetectionZeroCrossingSimple(img: np.ndarray) -> (np.ndarray):
     k = np.array([[0, 1, 0],
                   [1, -4, 1],
                   [0, 1, 0]])
-    d = conv2D(img, k)
+    d = cv.filter2D(img, -1, k, borderType=cv.BORDER_REPLICATE)
     res = np.zeros(d.shape)
 
+    # Check for a zero crossing around (x,y)
     for i in range(0, d.shape[0]):
         for j in range(0, d.shape[1]):
             try:
@@ -177,11 +179,14 @@ def edgeDetectionZeroCrossingLOG(img: np.ndarray) -> np.ndarray:
     :param I: Input image
     :return: :return: Edge matrix
     """
-    blur = blurImage2(img, np.array([5, 5]))
+    blur = blurImage2(img, 5)
     return edgeDetectionZeroCrossingSimple(blur)
 
 
 def sobleForCanny(img: np.ndarray):
+    """
+    A simple sobel that uses CV's functions.
+    """
     G = np.sqrt(np.power(cv.Sobel(img, -1, 0, 1), 2) + np.power(cv.Sobel(img, -1, 1, 0), 2))
     theta = np.arctan2(cv.Sobel(img, -1, 0, 1), cv.Sobel(img, -1, 1, 0))
     return G, theta
@@ -252,6 +257,7 @@ def non_max_suppression(img: np.ndarray, D: np.ndarray) -> np.ndarray:
     # Make all 0-180
     angle[angle < 0] += 180
 
+    # According to the angle checks for each (x,y) if it's intensity is greater or smaller
     for i in range(1, M - 1):
         for j in range(1, N - 1):
             try:
@@ -332,114 +338,3 @@ def houghCircle(img: np.ndarray, min_radius: float, max_radius: float) -> list:
                     list.append((x, y, min_radius + r))
 
     return list
-
-
-# line = np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-#                  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ])
-# plt.imshow(line)
-# plt.show()
-# div, _, _, _ = convDerivative(line)
-# div = div * 180. / np.pi
-#
-# print(div.astype(int))
-
-
-# image = imReadAndConvert("coincut.png", 1)
-# center_coordinates = (300, 50)
-# Radius of circle
-# radius = 20
-# # Blue color in BGR
-# color = (0, 0, 255)
-# # Line thickness of 2 px
-# thickness = 2
-# image = cv.circle(image, center_coordinates, radius, color, thickness)
-# plt.imshow(image, cmap='gray')
-# plt.show()
-
-# list = houghCircle(image, 40, 100)
-#
-# print(list)
-# fig, ax = plt.subplots()
-# ax.imshow(image, cmap='gray')
-# for c in list:
-#     if c[1] > 600 or c[2] > 600:
-#         print(c)
-#     circle1 = plt.Circle((c[0], c[1]), c[2], color='r', fill=False)
-#     ax.add_artist(circle1)
-# plt.show()
-
-# image = cv.imread("coins.jpg", 0)
-# data = np.asarray(image, dtype=np.float32)
-# list = houghCircle(imReadAndConvert(data, 1), 30, 70)
-# print(list)
-# print(np.convolve([1, 2, 3], [0, 1, 0.5]))
-# a = np.array([1,2,3])
-# b = np.array([0,1,0.5])
-# print(conv1D(a,b))
-
-# arr = np.array([[1, 2, 3],[1, 2, 3],[1, 2, 3]], dtype=float)
-# arr2 = arr.shape
-# b = np.array([[0, 1, 0],[1, 0, 1],[0, 1, 0]])
-#
-# b = np.array([1,2,1])
-# plt.imshow(cv.filter2D(imReadAndConvert("boxman.jpg", 1), -1, b, borderType=cv.BORDER_REPLICATE))
-# plt.show()
-# plt.imshow(conv2D(imReadAndConvert("boxman.jpg", 1), b))
-# plt.show()
-
-# edgeDetectionSobel(imReadAndConvert("codeMonkey.jpeg", 1))
-#
-# b = np.array([[0, 1, 0],
-#               [1, 0, 1],
-#               [0, 1, 0]])
-# edgeDetectionZeroCrossingSimple(b)
-#
-# k = np.ndarray((3, 3)).shape
-# plt.imshow(blurImage1(imReadAndConvert("boxman.jpg", 1), np.array([25, 25])))
-# plt.show()
-# plt.imshow(blurImage2(imReadAndConvert("boxman.jpg", 1), np.array([25, 25])))
-# plt.show()
-
-# b = np.array([[0, 0, 0, 0],
-#               [0, 1, 0, 0],
-#               [0, 0, 0, 0]])
-# print(b[0:3, 0:3])
-# print(b[1][1])
-#
-# plt.imshow(edgeDetectionZeroCrossingSimple(imReadAndConvert("codeMonkey.jpeg", 1)), cmap='gray')
-# plt.show()
-# plt.imshow(edgeDetectionZeroCrossingLOG(imReadAndConvert("codeMonkey.jpeg", 1)), cmap='gray')
-# plt.show()
-
-# img = imReadAndConvert("beach (1).jpg",1)
-# x_ker = np.array([[0, 0, 0], [1, 0, -1], [0, 0, 0]])
-# y_ker = np.array([[0, 1, 0], [0, 0, 0], [0, -1, 0]])
-#
-# f, ax = plt.subplots(1, 2)
-# edgeX = conv2D(img, x_ker)
-# ax[0].imshow(edgeX, cmap="gray")
-# edgeX = cv.filter2D(img, -1, x_ker, borderType=cv.BORDER_REPLICATE)
-# ax[1].imshow(edgeX, cmap="gray")
-# plt.show()
-
-image = cv.imread("boxman.jpg", 0)
-data = np.asarray(image, dtype=np.float32)
-cvc, myc = edgeDetectionCanny(data, 100, 50)
-f, ax = plt.subplots(1, 2)
-ax[0].imshow(cvc, cmap="gray")
-ax[1].imshow(myc, cmap="gray")
-plt.show()
-
-# mag, div, Ix, Iy = convDerivative(imReadAndConvert("frog.png", 1))
-# plt.imshow(Ix, cmap='gray')
-# plt.show()
-# plt.imshow(Iy, cmap='gray')
-# plt.show()
-# plt.imshow(mag, cmap='gray')
-# plt.show()

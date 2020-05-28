@@ -86,6 +86,8 @@ def blurImage1(in_image: np.ndarray, kernel_size: np.ndarray) -> np.ndarray:
     :param kernelSize: Kernel size
     :return: The Blurred image
     """
+    # for x in range(0, kernel_size[0]):
+    #     gaussian1D[x] = math.exp(-((x ** 2) / (2.0 * sigma ** 2))) / math.sqrt(math.pi * (sigma ** 2) * 2)
 
     gaussian = np.ndarray(kernel_size)
     sigma = 0.3 * ((kernel_size[0] - 1) * 0.5 - 1) + 0.8
@@ -175,7 +177,7 @@ def edgeDetectionZeroCrossingLOG(img: np.ndarray) -> np.ndarray:
     :param I: Input image
     :return: :return: Edge matrix
     """
-    blur = blurImage2(img, np.array([5, 5]))
+    blur = blurImage2(img, np.array([3, 3]))
     return edgeDetectionZeroCrossingSimple(blur)
 
 
@@ -317,8 +319,8 @@ def houghCircle(img: np.ndarray, min_radius: float, max_radius: float) -> list:
 # print(div.astype(int))
 
 
-image = imReadAndConvert("coincut.png", 1)
-center_coordinates = (300, 50)
+# image = imReadAndConvert("coincut.png", 1)
+# center_coordinates = (300, 50)
 
 # Radius of circle
 # radius = 20
@@ -330,17 +332,17 @@ center_coordinates = (300, 50)
 # plt.imshow(image, cmap='gray')
 # plt.show()
 
-list = houghCircle(image, 40, 100)
-
-print(list)
-fig, ax = plt.subplots()
-ax.imshow(image, cmap='gray')
-for c in list:
-    if c[1] > 600 or c[2] > 600:
-        print(c)
-    circle1 = plt.Circle((c[0], c[1]), c[2], color='r', fill=False)
-    ax.add_artist(circle1)
-plt.show()
+# list = houghCircle(image, 40, 100)
+#
+# print(list)
+# fig, ax = plt.subplots()
+# ax.imshow(image, cmap='gray')
+# for c in list:
+#     if c[1] > 600 or c[2] > 600:
+#         print(c)
+#     circle1 = plt.Circle((c[0], c[1]), c[2], color='r', fill=False)
+#     ax.add_artist(circle1)
+# plt.show()
 
 # image = cv.imread("coins.jpg", 0)
 # data = np.asarray(image, dtype=np.float32)
@@ -380,10 +382,10 @@ plt.show()
 # print(b[0:3, 0:3])
 # print(b[1][1])
 #
-# plt.imshow(edgeDetectionZeroCrossingSimple(imReadAndConvert("codeMonkey.jpeg", 1)), cmap='gray')
-# plt.show()
-# plt.imshow(edgeDetectionZeroCrossingLOG(imReadAndConvert("codeMonkey.jpeg", 1)), cmap='gray')
-# plt.show()
+plt.imshow(edgeDetectionZeroCrossingSimple(imReadAndConvert("codeMonkey.jpeg", 1)), cmap='gray')
+plt.show()
+plt.imshow(edgeDetectionZeroCrossingLOG(imReadAndConvert("codeMonkey.jpeg", 1)), cmap='gray')
+plt.show()
 
 # img = imReadAndConvert("beach (1).jpg",1)
 # x_ker = np.array([[0, 0, 0], [1, 0, -1], [0, 0, 0]])
